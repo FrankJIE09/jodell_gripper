@@ -1,5 +1,5 @@
 # Jodell Gripper SDK 示例
-![Video](./RG/RG.mp4)
+![RG.gif](./RG/RG.gif)
 
 本项目提供了对 Jodell 手爪设备的 Python 控制接口，基于 Jodell 提供的 SDK 构建。通过本项目，可以使用 Python 控制 Jodell 手爪的连接、使能、参数设置、运行和状态查询等功能。
 
