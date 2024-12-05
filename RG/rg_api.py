@@ -179,7 +179,10 @@ if __name__ == "__main__":
         # 无参数运行夹爪
         # claw.run_without_param(claw_id=9, command_id=2)
         # 获取夹爪当前位置、速度和力矩
-        claw.run_with_param(claw_id=9, force=100, speed=100, position=255)
+        for i in range(100):
+            claw.run_with_param(claw_id=9, force=255, speed=255, position=255)
+            claw.run_with_param(claw_id=9, force=255, speed=255, position=0)
+
         print(claw.get_current_location(claw_id=9))
         print(claw.get_current_speed(claw_id=9))
         print(claw.get_current_torque(claw_id=9))
