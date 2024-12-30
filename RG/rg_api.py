@@ -2,6 +2,7 @@ from jodellSdk.jodellSdkDemo import RgClawControl
 import os
 import time
 
+
 class ClawOperation:
     def __init__(self, com_port, baud_rate):
         """
@@ -78,6 +79,24 @@ class ClawOperation:
             f"夹爪 {claw_id} 使能失败"
         )
 
+    def force_open_brake(self, claw_id, state=True):
+        """
+        强制打开或关闭抱闸。
+
+        :param claw_id: 夹爪 ID
+        :param state: True 表示打开抱闸，False 表示关闭抱闸
+        :return: 操作结果
+        """
+        if not self.check_connection():
+            return False
+        flag = self.clawControl.forceOpenBrake(claw_id, state)  # 调用 SDK 中的 forceOpenBrake 方法
+        return self.log_result(
+            "强制打开抱闸" if state else "强制关闭抱闸",
+            flag,
+            f"夹爪 {claw_id} 抱闸 {'已打开' if state else '已关闭'}",
+            f"夹爪 {claw_id} 抱闸控制失败"
+        )
+
     def run_without_param(self, claw_id, command_id):
         """无参数模式运行夹爪"""
         if not self.check_connection():  # 如果设备未连接，返回 False
@@ -91,7 +110,7 @@ class ClawOperation:
             f"无参数模式执行失败"
         )
 
-    def run_with_param(self, claw_id, force, speed, position,block=True):
+    def run_with_param(self, claw_id, force, speed, position, tolerance=3, block=True):
         """
         有参数模式运行夹爪，控制夹爪的力矩、速度和位置，直到夹爪到达目标位置。
 
@@ -99,8 +118,10 @@ class ClawOperation:
         :param force: 夹爪的力矩（单位：N·m），范围为 0-255
         :param speed: 夹爪的速度（单位：mm/s），范围为 0-255
         :param position: 夹爪的位置（单位：mm），范围为 0-255
+        :param tolerance: 目标位置的容忍范围（单位：mm），默认值为 3
+        :param block: 是否阻塞等待夹爪到达目标位置
         :return: 返回执行结果
-        :raises ValueError: 如果 force、speed 或 position 超出指定范围
+        :raises ValueError: 如果 force、speed、position 或 tolerance 超出指定范围
         """
         # 检查 force、speed 和 position 是否在合法范围内
         if not (0 <= force <= 255):
@@ -109,6 +130,8 @@ class ClawOperation:
             raise ValueError("speed must be between 0 and 255.")
         if not (0 <= position <= 255):
             raise ValueError("position must be between 0 and 255.")
+        if not (0 <= tolerance):
+            raise ValueError("tolerance must be non-negative.")
 
         # 通过 runWithParam 方法运行夹爪，传入力矩、速度和位置参数
         flag = self.clawControl.runWithParam(claw_id, position, speed, force)
@@ -122,7 +145,7 @@ class ClawOperation:
                 current_location = self.get_info(claw_id, "getClampCurrentLocation", "")
 
                 # 假设返回的是一个列表，如 [255]，取列表中的第一个值作为当前位置
-                if current_location and current_location[0] == position:
+                if current_location and abs(current_location[0] - position) <= tolerance:
                     break  # 目标位置已到达，跳出循环
 
                 # 可以选择添加一个小的延时，避免过于频繁地查询
@@ -174,14 +197,20 @@ class ClawOperation:
 if __name__ == "__main__":
     claw = ClawOperation(com_port="/dev/ttyUSB0", baud_rate=115200)  # 假设串口设备在 /dev/ttyUSB0
     if claw.connect():  # 连接设备
+        claw.force_open_brake(claw_id=9, state=True)
         # 使能夹爪
         claw.enable_claw(claw_id=9, enable=True)
         # 无参数运行夹爪
         # claw.run_without_param(claw_id=9, command_id=2)
+        # time.sleep(1)
+        # claw.run_without_param(claw_id=9, command_id=1)
+        # time.sleep(1)
+        # claw.run_without_param(claw_id=9, command_id=2)
+        # time.sleep(1)
         # 获取夹爪当前位置、速度和力矩
         for i in range(100):
-            claw.run_with_param(claw_id=9, force=255, speed=255, position=255)
-            claw.run_with_param(claw_id=9, force=255, speed=255, position=0)
+            claw.run_with_param(claw_id=9, force=255, speed=255, position=254)
+            claw.run_with_param(claw_id=9, force=255, speed=255, position=1)
 
         print(claw.get_current_location(claw_id=9))
         print(claw.get_current_speed(claw_id=9))
