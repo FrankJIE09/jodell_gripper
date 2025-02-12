@@ -192,6 +192,13 @@ class ClawOperation:
         """获取夹爪当前力矩"""
         return self.get_info(claw_id, "getClampCurrentTorque", "当前力矩")
 
+    def close(self):
+        self.run_with_param(claw_id=9, force=255, speed=255, position=255,block=False)
+        time.sleep(1)
+
+    def open(self):
+        self.run_with_param(claw_id=9, force=255, speed=255, position=0)
+
 
 # 示例：如何使用此 API 进行手爪操作
 if __name__ == "__main__":
@@ -208,12 +215,15 @@ if __name__ == "__main__":
         # claw.run_without_param(claw_id=9, command_id=1)
         # time.sleep(1)
         # 获取夹爪当前位置、速度和力矩
-        for i in range(100):
-            claw.run_with_param(claw_id=9, force=255, speed=255, position=255)
-            claw.run_with_param(claw_id=9, force=255, speed=255, position=0)
+        claw.close()
+        # claw.open()
 
-        print(claw.get_current_location(claw_id=9))
-        print(claw.get_current_speed(claw_id=9))
-        print(claw.get_current_torque(claw_id=9))
+        # for i in range(100):
+        #     claw.run_with_param(claw_id=9, force=255, speed=255, position=255)
+        #     claw.run_with_param(claw_id=9, force=255, speed=255, position=0)
+
+        # print(claw.get_current_location(claw_id=9))
+        # print(claw.get_current_speed(claw_id=9))
+        # print(claw.get_current_torque(claw_id=9))
         # 断开连接
         claw.disconnect()
