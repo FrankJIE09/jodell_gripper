@@ -5,15 +5,13 @@ import cv2
 import numpy as np
 import ast
 from Jodell_gripper import Gripper
-
-
 class eliteRobot:
-    def __init__(self, ip, port=8055):
+    def __init__(self,ip,port=8055):
         self.ip = ip
         self.port = port
         self.gripper = Gripper()
-        self.stop = False
-        con, self.sock = self.connectETController()
+        self.stop=False
+        con,self.sock = self.connectETController()
 
         if con:
             print("Connected to ET Controller")
@@ -30,92 +28,77 @@ class eliteRobot:
             return (False, None)
 
     def open_tci(self):
-        suc, result, _ = self.sendCMD("open_tci")
+        suc,result,_ = self.sendCMD("open_tci")
         return result
 
-    def set_tci(self, baud_rate=9600, bits=8, event="N", stop=1):
-        suc, result, _ = self.sendCMD("setopt_tci",
-                                      {"baud_rate": baud_rate, "bits": bits, "event": event, "stop": stop})
+    def set_tci(self,baud_rate=9600,bits=8,event="N",stop=1):
+        suc,result,_=self.sendCMD("setopt_tci", {"baud_rate": baud_rate,"bits": bits,"event": event,"stop":stop})
         return result
 
-    def recv_tci(self, count=100, hex=0, timeout=200):
-        suc, result, _ = self.sendCMD("recv_tci", {"count": count, "hex": hex, "timeout": timeout})
-        return result
+    def recv_tci(self,count=100,hex=1,timeout=200):
+        suc, result, _ = self.sendCMD("recv_tci",{"count": count,"hex":hex, "timeout":timeout})
+        if type(result) == dict:
+            print(result)
+            return True, None, None
 
-    def send_tci(self, send_buf, hex=1):
-        # send_buf_string = str(send_buf)
-        suc, result, _ = self.sendCMD("send_tci", {"send_buf": send_buf, "hex": hex})
-        print(result)
-        return suc, result
+        data = json.loads(result)
+        # 提取 "buf" 的值并赋给变量 received
+        result = data["result"]
+        size = data["size"]
+        received = data['buf']
+        return suc,result,size,received
+
+    def send_tci(self,send_buf,hex=1):
+
+        suc, result,_  = self.sendCMD("send_tci",{"send_buf": send_buf,"hex":hex})
+        return suc,result
 
     def flush_tci(self):
-        suc, result, _ = self.sendCMD("flush_tci")
+        suc,result,_ = self.sendCMD("flush_tci")
         return result
 
     def close_tci(self):
-        suc, result, _ = self.sendCMD("close_tci")
+        suc,result,_ = self.sendCMD("close_tci")
         return result
 
     def connect_gripper(self):
         self.open_tci()
 
-        result = self.set_tci(self.gripper.serial_params["baud_rate"], self.gripper.serial_params["data_bits"],
-                              self.gripper.serial_params["event"], self.gripper.serial_params["stop_bits"])
+        result=self.set_tci(self.gripper.serial_params["baud_rate"],self.gripper.serial_params["data_bits"],self.gripper.serial_params["event"],self.gripper.serial_params["stop_bits"])
         # 清空寄存器
         self.flush_tci()
         # 发送激活指令
-        suc, result = self.send_tci(self.gripper.activate_request(), 1)
+        suc,result=self.send_tci(self.gripper.activate_request(),1)
 
         # 接收回复
-        received = self.recv_tci(100, 1, 100000)
-
-        print(received)
-        self.flush_tci()
-        received1 = self.recv_tci(100, 1, 200)
-        # 清空缓存
-        self.flush_tci()
-
-        result = self.send_tci(self.gripper.enable_gripper())
-        received = self.recv_tci()
+        suc,result,size,buf=self.recv_tci(100,1,500)
+        suc,result=self.send_tci(self.gripper.enable_gripper(),1)
+        suc,result,size,buf=self.recv_tci(100,1,500)
 
         self.flush_tci()
-        function_code, received = self.gripper.decode_response(received)
+        function_code,received=self.gripper.decode_response(buf)
+
         while True:
-            # 读状态请求
-            self.send_tci(self.gripper.read_gripper_state(3))
-            # 接收回复
-            received = self.recv_tci()
-            # 粗解码
-            function_code, received = self.gripper.decode_response(received)
-            # 清空缓存
-            self.flush_tci()
-            # 状态解码
-            activate_state, _, _, _, error_state, _, _ = self.gripper.decode_state_data(received)
-            if activate_state == 3:
+            activate_state,error_state, move_state, current_position = self.read_gripper_state()
+            if activate_state==3:
                 print("使能成功")
                 break
-            if error_state != 0:
-                print("使能失败！错误码：", error_state)
+            if error_state!=0:
+                print("使能失败！错误码：",error_state)
                 break
         return
 
-    def run_gripper(self, target_position=0x00, force=100, speed=100):
+    def run_gripper(self,target_position=0x00,force=100,speed=100):
         # 首先清空缓存
         self.flush_tci()
         # 发送打开夹爪指令
-        self.send_tci(self.gripper.run_gripper(target_position, force, speed))
+        self.send_tci(self.gripper.run_gripper(target_position,force,speed))
         # 接收指令回复
-        received = self.recv_tci()
-        self.flush_tci()
+        suc,result,size,buf = self.recv_tci(100,1,500)
         while True:
-            self.send_tci(self.gripper.read_gripper_state(3))
-            received = self.recv_tci()
-            self.flush_tci()
-            function_code, received = self.gripper.decode_response(received)
-            data_length = received[0]
-            move_state, _, current_position, error_state, _, _ = self.gripper.decode_state_data(data_length, received)
-            if error_state != 0:
-                print("error occurred! error state:", error_state)
+            _,error_state,move_state,current_position=self.read_gripper_state()
+            if error_state!=0:
+                print("error occurred! error state:",error_state)
                 break
             if not move_state:
                 print(f"运动已停止当前位置为：{current_position}")
@@ -125,12 +108,21 @@ class eliteRobot:
         return
 
     def open_gripper(self):
-        self.run_gripper(00, 255, 255)
+        self.run_gripper(00,255,255)
+        return
+    def close_gripper(self):
+        self.run_gripper(255,255,255)
         return
 
-    def close_gripper(self):
-        self.run_gripper(255, 255, 255)
-        return
+    def read_gripper_state(self):
+        self.send_tci(self.gripper.read_gripper_state(3))
+        suc, result, size, buf = self.recv_tci()
+        function_code, received = self.gripper.decode_response(buf)
+        data_length = received[0]
+        command = received[1:]
+        activate_state, move_state, hand_state, current_position, error_state, current_speed, current_force = self.gripper.decode_state_data(
+            data_length, command)
+        return activate_state,error_state,move_state,current_position
 
     def disconnectETController(self):
         if self.sock:
@@ -161,7 +153,7 @@ class eliteRobot:
             params = json.dumps(params)
 
         sendStr = "{{\"jsonrpc\":\"2.0\",\"method\":\"{0}\",\"params\":{1},\"id\":{2}}}".format(cmd, params, id) + "\n"
-        print(sendStr)
+
         try:
             self.sock.sendall(bytes(sendStr, "utf-8"))
             ret = self.sock.recv(1024)
@@ -176,7 +168,7 @@ class eliteRobot:
             return (False, None, None)
 
     def getServoStatus(self):
-        _, servo_status, _ = self.sendCMD("getServoStatus")
+        _,servo_status,_ = self.sendCMD("getServoStatus")
         return servo_status
 
     def setServoStatus(self, status):
@@ -189,21 +181,21 @@ class eliteRobot:
         return self.sendCMD("clearAlarm")
 
     def getMotorStatus(self):
-        return self.sendCMD("getMotorStatus")
+        return self.sendCMD( "getMotorStatus")
 
     ### ParamService APIs ###
     def getRobotState(self):
-        return self.sendCMD("getRobotState")
+        return self.sendCMD( "getRobotState")
 
     def getRobotMode(self):
-        return self.sendCMD("getRobotMode")
+        return self.sendCMD( "getRobotMode")
 
     def getJointPos(self):
-        return self.sendCMD("get_joint_pos")
+        return self.sendCMD( "get_joint_pos")
 
     def getTcpPose(self, coordinate_num=-1, tool_num=-1, unit_type=1):
         params = {"coordinate_num": coordinate_num, "tool_num": tool_num, "unit_type": unit_type}
-        pose_info = self.sendCMD("get_tcp_pose", params)
+        pose_info=self.sendCMD( "get_tcp_pose", params)
         pose_info_str = pose_info[1]
         array = ast.literal_eval(pose_info_str)
         if array:
@@ -212,16 +204,16 @@ class eliteRobot:
             return None  # 如果没有找到方括号内容，返回 None
 
     def getMotorSpeed(self):
-        return self.sendCMD("get_motor_speed")
+        return self.sendCMD( "get_motor_speed")
 
     def getCurrentCoord(self):
-        return self.sendCMD("getCurrentCoord")
+        return self.sendCMD( "getCurrentCoord")
 
     def getCycleMode(self):
         return self.sendCMD("getCycleMode")
 
     def getCurrentJobLine(self):
-        return self.sendCMD("getCurrentJobLine")
+        return self.sendCMD( "getCurrentJobLine")
 
     def getCurrentEncode(self):
         return self.sendCMD("getCurrentEncode")
@@ -230,16 +222,16 @@ class eliteRobot:
         return self.sendCMD("getToolNumber")
 
     def setToolNumber(self, tool_num):
-        return self.sendCMD("setToolNumber", {"tool_num": tool_num})
+        return self.sendCMD( "setToolNumber", {"tool_num": tool_num})
 
     def getUserNumber(self):
-        return self.sendCMD("getUserNumber")
+        return self.sendCMD( "getUserNumber")
 
     def setUserNumber(self, user_num):
         return self.sendCMD("setUserNumber", {"user_num": user_num})
 
     def getMotorTorque(self):
-        return self.sendCMD("get_motor_torque")
+        return self.sendCMD( "get_motor_torque")
 
     def getPathPointIndex(self):
         return self.sendCMD("getPathPointIndex")
@@ -250,7 +242,7 @@ class eliteRobot:
     def moveByJoint(self, targetPos, speed=10, block=True):
         # 发送目标位置和速度的命令
         # 发送关节目标位置
-        suc, result, _ = self.sendCMD("moveByJoint", {"targetPos": targetPos, "speed": speed})
+        suc, result, _ = self.sendCMD( "moveByJoint", {"targetPos": targetPos, "speed": speed})
         if suc:
             print(f"Move command sent: Target position {targetPos} with speed {speed}")
 
@@ -295,7 +287,7 @@ class eliteRobot:
 
     def moveByLineTCPCoord(self, targetPos, speed=10):
         print(targetPos)
-        current_Tcp = self.getTcpPose()
+        current_Tcp=self.getTcpPose()
         suc, result, _ = self.sendCMD("moveByLineCoord", {
             "targetUserPose": targetPos,
             "speed_type": 0,
@@ -323,7 +315,7 @@ class eliteRobot:
 
     def send_moveByLineTCPCoord_CMD(self, targetPos, speed=10):
         print(targetPos)
-        current_Tcp = self.getTcpPose()
+        current_Tcp=self.getTcpPose()
         suc, result, _ = self.sendCMD("moveByLineCoord", {
             "targetUserPose": targetPos,
             "speed_type": 0,
@@ -353,7 +345,7 @@ class eliteRobot:
             print(f"Failed to send stop command")
         return
 
-    def moveByLine(self, point, speed=10):
+    def moveByLine(self,point,speed=10):
         print(type(point))
         # 发送直线运动命令
         suc, result, _ = self.sendCMD("moveByLine", {
@@ -370,7 +362,7 @@ class eliteRobot:
 
             # 阻塞等待直到机器人到达目标点
             while True:
-                suc, result, _ = self.sendCMD("getRobotState")
+                suc, result, _ = self.sendCMD( "getRobotState")
                 if suc and result == "0":  # 0表示机器人已停止
                     print(f"Robot reached target point: {point}")
                     break
@@ -384,7 +376,7 @@ class eliteRobot:
         all_dh_parameters = []
 
         for index in range(num_parameters):
-            ret, result, id = self.sendCMD("getDH", {"index": index})
+            ret, result, id = self.sendCMD( "getDH", {"index": index})
             if ret:
                 print(f"DH参数 (index {index}) = {result}")
                 all_dh_parameters.append(result)
@@ -394,28 +386,29 @@ class eliteRobot:
         return all_dh_parameters
 
     def moveByPath(self):
-        return self.sendCMD("moveByPath")
+        return self.sendCMD( "moveByPath")
 
     def clearPathPoint(self):
-        return self.sendCMD("clearPathPoint")
+        return self.sendCMD( "clearPathPoint")
 
     def addPathPoint(self, wayPoint, moveType=0, speed=50, circular_radius=0):
         params = {"wayPoint": wayPoint, "moveType": moveType, "speed": speed, "circular_radius": circular_radius}
-        return self.sendCMD("addPathPoint", params)
+        return self.sendCMD( "addPathPoint", params)
 
     def moveBySpeedl(self, speed_l, acc, arot, t, id=1):
         params = {"v": speed_l, "acc": acc, "arot": arot, "t": t}
-        return self.sendCMD("moveBySpeedl", params, id)
+        return self.sendCMD( "moveBySpeedl", params, id)
 
     def moveBySpeedj(self, speed_j, acc=20, t=0.01, id=1):
         params = {"vj": speed_j, "acc": acc, "t": t}
-        return self.sendCMD("moveBySpeedj", params, id)
+        return self.sendCMD( "moveBySpeedj", params, id)
 
     def stopj(self, acc=20, id=1):
         params = {"acc": acc}
-        return self.sendCMD("stopj", params, id)
+        return self.sendCMD( "stopj", params, id)
 
-    def jog(self, coord, index=4, speed=10):
+
+    def jog(self,coord,index=4,speed=10):
         """
         :param coord: 关节：0，基座：1，工具：2，用户：3，圆柱：4
         :param index:轴编号，0-11，如果是笛卡尔坐标系就分别对应xyz轴的加减和旋转加减，如果是关节坐标系则对应各个关节额的
@@ -425,11 +418,11 @@ class eliteRobot:
         self.stop = True
         # 默认为z轴增加
         # 记录当前坐标系
-        current_coord = self.getCurrentCoord()
+        current_coord=self.getCurrentCoord()
         # 将当前坐标系设置为工具坐标系
         self.setCurrentCoord(coord)
-        params = {"index": index, "speed": speed}
-        self.sendCMD("jog", params)
+        params = {"index": index,"speed":speed}
+        self.sendCMD( "jog", params)
         self.setCurrentCoord(current_coord)
         # 要在线程中给self.stop赋值
         while True:
@@ -437,6 +430,8 @@ class eliteRobot:
                 self.stop_move()
                 break
         return
+
+
 
     def keyboardControl(self):
         # 创建窗口
@@ -520,7 +515,7 @@ class eliteRobot:
             suc, theta, _ = self.getJointPos()
             # 发送速度命令到机器人
             if flag:
-                suc, result, _ = self.moveBySpeedj(list(speed), acc, t)
+                suc, result, _ = self.moveBySpeedj( list(speed), acc, t)
                 if suc:
                     print("Movement command sent successfully.")
                 else:
@@ -579,7 +574,7 @@ class eliteRobot:
                 speed[0] = step_size_xyz
                 suc, theta, _ = self.getJointPos()
                 # 发送速度命令到机器人
-                suc, result, _ = self.moveBySpeedj(list(speed), acc, t)
+                suc, result, _ = self.moveBySpeedj( list(speed), acc, t)
                 if suc:
                     print("Movement command sent successfully.")
                 else:
@@ -590,7 +585,7 @@ class eliteRobot:
                 speed[0] = -step_size_xyz
                 suc, theta, _ = self.getJointPos()
                 # 发送速度命令到机器人
-                suc, result, _ = self.moveBySpeedj(list(speed), acc, t)
+                suc, result, _ = self.moveBySpeedj( list(speed), acc, t)
                 if suc:
                     print("Movement command sent successfully.")
                 else:
@@ -607,14 +602,50 @@ def main():
     robot_ip = "192.168.1.201"  # 机器人IP地址
     robot = eliteRobot(robot_ip)
 
+
     # 获取机器人当前伺服状态
-    suc, servo_status, _ = robot.sendCMD("getServoStatus")
+    suc, servo_status, _ = robot.sendCMD( "getServoStatus")
     if suc:
         print("Current Servo Status:", servo_status)
+
+        # 如果伺服没有启用，设置伺服为开启状态
+        # if servo_status == "false" or servo_status == "0":
+        #     print("Enabling servo...")
+        #     suc, result, _ = robot.sendCMD( "set_servo_status", {"status": 1})  # 1表示启用伺服
+        #     if suc:
+        #         print("Servo enabled successfully.")
+        #     else:
+        #         print("Failed to enable servo.")
+        #         return
+        # else:
+        #     print("Servo is already enabled.")
+
+    # 使用键盘控制机器人
+    # robot.keyboardControl()
+    # robot.AutoControl()
+    # current_pose=robot.getTcpPose()
+    # print(current_pose)
+    # target_pose=[0, 0, 0, 0, 0, 0]
+    # target_pose[2]-=300
+    # print(current_pose)
+    # print(target_pose)
+    # 只发送一次
+    # robot.send_moveByLineTCPCoord_CMD(target_pose, 20)
+    # 运动1s
+    # time.sleep(2)
+    # robot.stop_move()
+    # 断开连接
+
     robot.connect_gripper()
     robot.run_gripper(0)
+    _,error_state,move_state,  current_position=robot.read_gripper_state()
+    print("当前位置：",current_position)
+
     robot.disconnectETController()
+
 
 
 if __name__ == "__main__":
     main()
+
+
