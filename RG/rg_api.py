@@ -103,6 +103,7 @@ class ClawOperation:
             return False
         # 运行夹爪，通过 runWithoutParam 方法
         flag = self.clawControl.runWithoutParam(claw_id, command_id)
+        print(flag)
         return self.log_result(
             f"运行夹爪 {claw_id}",
             flag,
@@ -205,7 +206,8 @@ if __name__ == "__main__":
     claw = ClawOperation(com_port="/dev/ttyUSB0", baud_rate=115200)  # 假设串口设备在 /dev/ttyUSB0
     if claw.connect():  # 连接设备
         claw.force_open_brake(claw_id=9, state=True)
-        # 使能夹爪
+        claw.force_open_brake(claw_id=9, state=True)
+        # 使能夹爪w
         claw.enable_claw(claw_id=9, enable=True)
         # 无参数运行夹爪
         # claw.run_without_param(claw_id=9, command_id=2)
@@ -218,9 +220,9 @@ if __name__ == "__main__":
         claw.close()
         # claw.open()
 
-        # for i in range(100):
-        #     claw.run_with_param(claw_id=9, force=255, speed=255, position=255)
-        #     claw.run_with_param(claw_id=9, force=255, speed=255, position=0)
+        for i in range(100):
+            claw.run_with_param(claw_id=9, force=255, speed=255, position=255)
+            claw.run_with_param(claw_id=9, force=255, speed=255, position=0)
 
         # print(claw.get_current_location(claw_id=9))
         # print(claw.get_current_speed(claw_id=9))
