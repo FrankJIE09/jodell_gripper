@@ -31,7 +31,7 @@ def gripper_cmd_callback(msg):
                 return
             claw.enable_claw(claw_id=CLAW_ID, enable=True)
         rospy.loginfo("运行夹爪: id=%d, force=255, speed=255, position=%d", CLAW_ID, position)
-        claw.run_with_param(claw_id=CLAW_ID, force=255, speed=255, position=position)
+        claw.run_with_param(claw_id=CLAW_ID, force=255, speed=255, position=position,block=False)
         rospy.loginfo("操作成功")
     except Exception as e:
         rospy.logerr("操作异常: %s", str(e))
